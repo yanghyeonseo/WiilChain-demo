@@ -209,15 +209,45 @@ function App() {
     if (pa !== pb) return pa - pb;
     return actorName[a].localeCompare(actorName[b], 'ko');
   });
-  const maxIndex = stageDefinitions.length - 1;
+  const timelineColumns = useMemo(() => {
+    const columns: Array<{ real?: StageDefinition; chain?: StageDefinition }> = [];
+    let colIndex = 0;
+    let prevLane: 'real' | 'chain' | null = null;
+
+    for (const stage of stageDefinitions) {
+      if (stage.timelineLane === 'real') {
+        colIndex += 1;
+        columns[colIndex - 1] = columns[colIndex - 1] ?? {};
+        columns[colIndex - 1].real = stage;
+        prevLane = 'real';
+      } else {
+        if (prevLane === 'chain') {
+          colIndex += 1;
+        } else if (colIndex === 0) {
+          colIndex = 1;
+        }
+        columns[colIndex - 1] = columns[colIndex - 1] ?? {};
+        columns[colIndex - 1].chain = stage;
+        prevLane = 'chain';
+      }
+    }
+
+    return columns;
+  }, []);
+  const maxIndex = timelineColumns.length - 1;
   const laneFillPercent = (lane: 'real' | 'chain') => {
-    const idx = stageDefinitions.reduce((acc, stage, i) => {
-      if (stage.timelineLane === lane && stage.order <= currentStage.order) return i;
+    const idx = timelineColumns.reduce((acc, column, i) => {
+      const stage = lane === 'real' ? column.real : column.chain;
+      if (stage && stage.order <= currentStage.order) return i;
       return acc;
     }, -1);
     if (idx < 0 || maxIndex <= 0) return 0;
-    return (idx / maxIndex) * 100;
+    return ((idx + 0.5) / timelineColumns.length) * 100;
   };
+  const timelineLabel = (stage: StageDefinition): string =>
+    stage.timelineLane === 'chain'
+      ? stage.timelineLabel.replaceAll(' 이벤트 블록', '')
+      : stage.timelineLabel;
   const shouldRenderParticipantButton = (actor: ActorId): boolean => {
     if (actor === 'assignee_1') {
       if (
@@ -240,103 +270,162 @@ function App() {
           <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">WillChain Scenario Timeline</p>
 
           <div className="overflow-x-auto pb-1">
-            <div className="min-w-[1480px] space-y-3">
-              <div className="grid grid-cols-22 gap-1">
-                {stageDefinitions.map((stage) => (
-                  <button
-                    key={`real-label-${stage.id}`}
-                    type="button"
-                    onClick={() => transitionTo(stage.id)}
-                    className="min-h-10 px-1 text-center text-[11px] leading-4 text-slate-700"
-                  >
-                    {stage.timelineLane === 'real' ? stage.timelineLabel : ''}
-                  </button>
-                ))}
-              </div>
-
-              <div className="relative grid grid-cols-22 gap-1">
-                <div className="pointer-events-none absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-slate-300" />
+            <div className="min-w-[980px] space-y-0">
+              <div className="flex items-center gap-2">
+                <div className="w-14" />
                 <div
-                  className="pointer-events-none absolute left-0 top-1/2 h-px -translate-y-1/2 bg-emerald-500"
-                  style={{ width: `${laneFillPercent('real')}%` }}
-                />
-                {stageDefinitions.map((stage) => {
-                  const isDot = stage.timelineLane === 'real';
-                  const isCurrent = stage.id === currentStage.id;
-                  const isCompleted = stage.order < currentStage.order;
-                  const dotClass = isCurrent
-                    ? 'h-4 w-4 border-blue-500 bg-blue-600 ring-4 ring-blue-200 animate-pulse-soft'
-                    : isCompleted
-                      ? 'h-3.5 w-3.5 border-emerald-500 bg-emerald-600'
-                      : 'h-3.5 w-3.5 border-slate-300 bg-white';
-
-                  return (
-                    <div key={`real-dot-${stage.id}`} className="relative z-10 flex h-6 items-center justify-center">
-                      {isDot ? (
-                        <button
-                          type="button"
-                          onClick={() => transitionTo(stage.id)}
-                          className={`rounded-full border-2 transition ${dotClass}`}
-                          aria-label={`${stage.timelineLabel} (${stage.date})`}
-                        />
-                      ) : (
-                        <span className="h-3.5 w-3.5" />
-                      )}
-                    </div>
-                  );
-                })}
+                  className="grid flex-1 gap-1"
+                  style={{ gridTemplateColumns: `repeat(${timelineColumns.length}, minmax(0, 1fr))` }}
+                >
+                  {timelineColumns.map((column, idx) => (
+                    <button
+                      key={`real-label-${idx}`}
+                      type="button"
+                      onClick={() => {
+                        if (column.real) transitionTo(column.real.id);
+                      }}
+                      className="min-h-8 px-1 text-center text-[11px] leading-4 text-slate-700"
+                    >
+                      {column.real ? timelineLabel(column.real) : ''}
+                    </button>
+                  ))}
+                </div>
               </div>
 
-              <div className="relative grid grid-cols-22 gap-1">
-                <div className="pointer-events-none absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-slate-300" />
+              <div className="flex items-center gap-2">
+                <p className="w-14 text-right text-[13px] font-bold text-slate-700">현실 사건</p>
                 <div
-                  className="pointer-events-none absolute left-0 top-1/2 h-px -translate-y-1/2 bg-emerald-500"
-                  style={{ width: `${laneFillPercent('chain')}%` }}
-                />
-                {stageDefinitions.map((stage) => {
-                  const isDot = stage.timelineLane === 'chain';
-                  const isCurrent = stage.id === currentStage.id;
-                  const isCompleted = stage.order < currentStage.order;
-                  const dotClass = isCurrent
-                    ? 'h-4 w-4 border-blue-500 bg-blue-600 ring-4 ring-blue-200 animate-pulse-soft'
-                    : isCompleted
-                      ? 'h-3.5 w-3.5 border-emerald-500 bg-emerald-600'
-                      : 'h-3.5 w-3.5 border-slate-300 bg-white';
+                  className="relative grid flex-1 gap-1"
+                  style={{ gridTemplateColumns: `repeat(${timelineColumns.length}, minmax(0, 1fr))` }}
+                >
+                  <div className="pointer-events-none absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-slate-300" />
+                  <div
+                    className="pointer-events-none absolute left-0 top-1/2 h-px -translate-y-1/2 bg-emerald-500"
+                    style={{ width: `${laneFillPercent('real')}%` }}
+                  />
+                  {timelineColumns.map((column, idx) => {
+                    const stage = column.real;
+                    const isDot = Boolean(stage);
+                    const isCurrent = stage ? stage.id === currentStage.id : false;
+                    const isCompleted = stage ? stage.order < currentStage.order : false;
+                    const dotClass = isCurrent
+                      ? 'h-4 w-4 border-blue-500 bg-blue-600 ring-4 ring-blue-200 animate-pulse-soft'
+                      : isCompleted
+                        ? 'h-3.5 w-3.5 border-emerald-500 bg-emerald-600'
+                        : 'h-3.5 w-3.5 border-slate-300 bg-white';
 
-                  return (
-                    <div key={`chain-dot-${stage.id}`} className="relative z-10 flex h-6 items-center justify-center">
-                      {isDot ? (
-                        <button
-                          type="button"
-                          onMouseEnter={() => setHoveredBlockStageId(stage.id)}
-                          onMouseLeave={() => setHoveredBlockStageId(null)}
-                          onClick={() => transitionTo(stage.id)}
-                          className={`border-2 transition ${dotClass} rounded-sm`}
-                          aria-label={`${stage.timelineLabel} (${stage.date})`}
-                        />
-                      ) : (
-                        <span className="h-3.5 w-3.5" />
-                      )}
-                    </div>
-                  );
-                })}
+                    return (
+                      <div key={`real-dot-${idx}`} className="relative z-10 flex h-6 items-center justify-center">
+                        {isDot ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (stage) transitionTo(stage.id);
+                            }}
+                            className={`rounded-full border-2 transition ${dotClass}`}
+                            aria-label={`${stage?.timelineLabel ?? ''} (${stage?.date ?? ''})`}
+                          />
+                        ) : (
+                          <span className="h-3.5 w-3.5" />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
 
-              <div className="grid grid-cols-22 gap-1">
-                {stageDefinitions.map((stage) => (
-                  <button
-                    key={`chain-label-${stage.id}`}
-                    type="button"
-                    onMouseEnter={() => {
-                      if (stage.timelineLane === 'chain') setHoveredBlockStageId(stage.id);
-                    }}
-                    onMouseLeave={() => setHoveredBlockStageId(null)}
-                    onClick={() => transitionTo(stage.id)}
-                    className="min-h-10 px-1 text-center text-[11px] leading-4 text-slate-700"
-                  >
-                    {stage.timelineLane === 'chain' ? stage.timelineLabel : ''}
-                  </button>
-                ))}
+              <div className="flex items-center gap-2">
+                <div className="w-14" />
+                <div
+                  className="grid flex-1 gap-1"
+                  style={{ gridTemplateColumns: `repeat(${timelineColumns.length}, minmax(0, 1fr))` }}
+                >
+                  {timelineColumns.map((column, idx) => (
+                    <div key={`connector-${idx}`} className="flex h-2 items-center justify-center">
+                      {column.real && column.chain ? (
+                        <span
+                          className="w-px"
+                          style={{
+                            height: 'calc(100% + 24px)',
+                            backgroundImage:
+                              'repeating-linear-gradient(to bottom, rgb(148 163 184) 0px, rgb(148 163 184) 2px, transparent 2px, transparent 5px)',
+                          }}
+                        />
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <p className="w-14 text-right text-[13px] font-bold text-slate-700">블록체인</p>
+                <div
+                  className="relative grid flex-1 gap-1"
+                  style={{ gridTemplateColumns: `repeat(${timelineColumns.length}, minmax(0, 1fr))` }}
+                >
+                  <div className="pointer-events-none absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-slate-300" />
+                  <div
+                    className="pointer-events-none absolute left-0 top-1/2 h-px -translate-y-1/2 bg-emerald-500"
+                    style={{ width: `${laneFillPercent('chain')}%` }}
+                  />
+                  {timelineColumns.map((column, idx) => {
+                    const stage = column.chain;
+                    const isDot = Boolean(stage);
+                    const isCurrent = stage ? stage.id === currentStage.id : false;
+                    const isCompleted = stage ? stage.order < currentStage.order : false;
+                    const dotClass = isCurrent
+                      ? 'h-4 w-4 border-blue-500 bg-blue-600 ring-4 ring-blue-200 animate-pulse-soft'
+                      : isCompleted
+                        ? 'h-3.5 w-3.5 border-emerald-500 bg-emerald-600'
+                        : 'h-3.5 w-3.5 border-slate-300 bg-white';
+
+                    return (
+                      <div key={`chain-dot-${idx}`} className="relative z-10 flex h-6 items-center justify-center">
+                        {isDot ? (
+                          <button
+                            type="button"
+                            onMouseEnter={() => {
+                              if (stage) setHoveredBlockStageId(stage.id);
+                            }}
+                            onMouseLeave={() => setHoveredBlockStageId(null)}
+                            onClick={() => {
+                              if (stage) transitionTo(stage.id);
+                            }}
+                            className={`border-2 transition ${dotClass} rounded-sm`}
+                            aria-label={`${stage?.timelineLabel ?? ''} (${stage?.date ?? ''})`}
+                          />
+                        ) : (
+                          <span className="h-3.5 w-3.5" />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <div className="w-14" />
+                <div
+                  className="grid flex-1 gap-1"
+                  style={{ gridTemplateColumns: `repeat(${timelineColumns.length}, minmax(0, 1fr))` }}
+                >
+                  {timelineColumns.map((column, idx) => (
+                    <button
+                      key={`chain-label-${idx}`}
+                      type="button"
+                      onMouseEnter={() => {
+                        if (column.chain) setHoveredBlockStageId(column.chain.id);
+                      }}
+                      onMouseLeave={() => setHoveredBlockStageId(null)}
+                      onClick={() => {
+                        if (column.chain) transitionTo(column.chain.id);
+                      }}
+                      className="min-h-8 px-1 text-center text-[11px] leading-4 text-slate-700"
+                    >
+                      {column.chain ? timelineLabel(column.chain) : ''}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
