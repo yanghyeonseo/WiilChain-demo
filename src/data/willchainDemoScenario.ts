@@ -99,6 +99,7 @@ const baseAssets: AssetState[] = [
     helperText: '사후 절차는 아직 시작되지 않았습니다.',
   },
 ];
+let previousAssetsSnapshot: AssetState[] = baseAssets.map((asset) => ({ ...asset }));
 
 const logMilestones: Array<{
   id: string;
@@ -242,7 +243,7 @@ const mergeAssets = (
   overrides: Partial<Record<AssetCardId, Partial<AssetState>>>,
   updatedAt: string,
 ): AssetState[] => {
-  return baseAssets.map((asset) => {
+  const nextAssets = previousAssetsSnapshot.map((asset) => {
     const override = overrides[asset.assetId] ?? {};
     const hasStatusOverride = Object.prototype.hasOwnProperty.call(override, 'statusText');
     const hasHelperOverride = Object.prototype.hasOwnProperty.call(override, 'helperText');
@@ -254,6 +255,8 @@ const mergeAssets = (
       lastUpdated: override.lastUpdated ?? updatedAt,
     };
   });
+  previousAssetsSnapshot = nextAssets.map((asset) => ({ ...asset }));
+  return nextAssets;
 };
 
 const logsUntil = (order: number): UserLogCard[] => {
