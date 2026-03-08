@@ -701,37 +701,34 @@ function App() {
           </section>
         </main>
 
-        <footer className="rounded-3xl border border-white/70 bg-white/85 p-3 shadow-xl backdrop-blur">
-          <div className="flex items-center justify-between">
-            <button
-              type="button"
-              onClick={() => transitionTo(currentStage.previousStageId)}
-              disabled={currentStage.id === firstStage.id}
-              className={`rounded-2xl px-4 py-2 text-sm font-semibold transition ${
-                currentStage.id === firstStage.id
-                  ? 'cursor-not-allowed bg-slate-200 text-slate-500'
-                  : 'bg-slate-900 text-white hover:bg-slate-700'
-              }`}
-            >
-              이전 단계
-            </button>
-            <p className="text-sm text-slate-600">
-              {currentStage.order}. {currentStage.timelineLabel} ({currentStage.date})
-            </p>
-            <button
-              type="button"
-              onClick={() => transitionTo(currentStage.nextStageId)}
-              disabled={currentStage.id === lastStage.id}
-              className={`rounded-2xl px-4 py-2 text-sm font-semibold transition ${
-                currentStage.id === lastStage.id
-                  ? 'cursor-not-allowed bg-slate-200 text-slate-500'
-                  : 'bg-blue-600 text-white hover:bg-blue-700'
-              }`}
-            >
-              다음 단계
-            </button>
-          </div>
-        </footer>
+      </div>
+      <div className="pointer-events-none fixed inset-x-0 bottom-5 z-40 px-5">
+        <div className="pointer-events-auto flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => transitionTo(currentStage.previousStageId)}
+            disabled={currentStage.id === firstStage.id}
+            className={`rounded-2xl border px-5 py-2.5 text-sm font-semibold shadow-[0_16px_40px_rgba(15,23,42,0.28),0_2px_8px_rgba(15,23,42,0.18)] backdrop-blur-md ring-1 ring-white/40 transition ${
+              currentStage.id === firstStage.id
+                ? 'cursor-not-allowed border-slate-200 bg-white/60 text-slate-400'
+                : 'border-slate-300 bg-white/80 text-slate-800 hover:bg-white'
+            }`}
+          >
+            ◀ 이전 단계
+          </button>
+          <button
+            type="button"
+            onClick={() => transitionTo(currentStage.nextStageId)}
+            disabled={currentStage.id === lastStage.id}
+            className={`rounded-2xl border px-5 py-2.5 text-sm font-semibold shadow-[0_16px_40px_rgba(15,23,42,0.28),0_2px_8px_rgba(15,23,42,0.18)] backdrop-blur-md ring-1 ring-white/30 transition ${
+              currentStage.id === lastStage.id
+                ? 'cursor-not-allowed border-slate-200 bg-white/60 text-slate-400'
+                : 'border-blue-300 bg-blue-600/90 text-white hover:bg-blue-600'
+            }`}
+          >
+            다음 단계 ▶
+          </button>
+        </div>
       </div>
       {hoverPreview ? (
         <div
