@@ -257,7 +257,9 @@ function App() {
     return true;
   };
   const mergedActivityLogs = useMemo(() => {
-    const completedLogs = [...currentStage.userLogCards].reverse();
+    const completedLogs = currentStage.userLogCards
+      .filter((log) => (log.stageOrder ?? Number.NEGATIVE_INFINITY) < currentStage.order)
+      .reverse();
     const currentLog = {
       id: `current-${currentStage.id}`,
       title: currentStage.shortTitle,
@@ -265,10 +267,7 @@ function App() {
       date: currentStage.date,
       status: 'in_progress' as const,
     };
-    const dedupedCompleted = completedLogs.filter(
-      (log) => !(log.title === currentLog.title && log.date === currentLog.date),
-    );
-    return [currentLog, ...dedupedCompleted];
+    return [currentLog, ...completedLogs];
   }, [currentStage]);
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_15%_15%,#dbeafe_0,#f8fafc_42%,#f1f5f9_100%)] px-4 py-6 text-slate-900 sm:px-6 lg:px-8">
@@ -575,7 +574,7 @@ function App() {
             </div>
 
             <div className="w-full aspect-[9/17] rounded-[2rem] border-8 border-slate-900 bg-slate-950 p-2 shadow-2xl">
-              <div className="h-full overflow-y-auto rounded-[1.4rem] bg-slate-50 p-3">
+              <div className="h-full overflow-y-auto overscroll-contain rounded-[1.4rem] bg-slate-50 p-3">
                 {currentStage.userModal?.visible ? (
                   <section className="mb-3 rounded-2xl border border-blue-200 bg-blue-50 p-3">
                     <p className="text-xs font-semibold text-blue-700">현재 액션</p>

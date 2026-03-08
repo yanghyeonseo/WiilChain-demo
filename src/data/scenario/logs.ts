@@ -149,6 +149,7 @@ export const createLogsUntil = () => {
         date: log.date,
         icon: log.icon,
         status: 'completed',
+        stageOrder: log.stageOrder,
       }));
   };
 };

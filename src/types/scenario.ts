@@ -98,6 +98,7 @@ export interface UserLogCard {
   date: string;
   status: 'completed' | 'current' | 'pending';
   icon: string;
+  stageOrder?: number;
 }
 
 export interface UserModal {
