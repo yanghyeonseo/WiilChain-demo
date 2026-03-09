@@ -1,14 +1,31 @@
-import { useMemo, useState, type MouseEvent as ReactMouseEvent } from 'react';
+import {
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type MouseEvent as ReactMouseEvent,
+} from 'react';
 import { participantProfiles, stageDefinitions } from './data/willchainDemoScenario';
 import type { ActorId, ParticipantId, StageDefinition, StatusTone } from './types/scenario';
+import willChainLogo from './assets/will_chain.png';
+import smartContractLogo from './assets/smart_contract.png';
 
-const toneClasses: Record<StatusTone, string> = {
-  gray: 'border-slate-300 bg-slate-50 text-slate-700',
-  yellow: 'border-amber-300 bg-amber-50 text-amber-800',
-  green: 'border-emerald-300 bg-emerald-50 text-emerald-800',
-  blue: 'border-blue-300 bg-blue-50 text-blue-800',
-  purple: 'border-indigo-300 bg-indigo-50 text-indigo-800',
-  red: 'border-rose-300 bg-rose-50 text-rose-800',
+const statusTagClasses: Record<StatusTone, string> = {
+  gray: 'bg-slate-100 text-slate-700',
+  yellow: 'bg-amber-100 text-amber-700',
+  green: 'bg-emerald-100 text-emerald-700',
+  blue: 'bg-blue-100 text-blue-700',
+  purple: 'bg-indigo-100 text-indigo-700',
+  red: 'bg-rose-100 text-rose-700',
+};
+const statusPulseColorByTone: Record<StatusTone, string> = {
+  gray: 'rgba(100,116,139,0.34)',
+  yellow: 'rgba(245,158,11,0.38)',
+  green: 'rgba(16,185,129,0.38)',
+  blue: 'rgba(59,130,246,0.38)',
+  purple: 'rgba(99,102,241,0.38)',
+  red: 'rgba(244,63,94,0.38)',
 };
 
 const actorName: Record<ActorId, string> = {
@@ -25,6 +42,12 @@ const actorName: Record<ActorId, string> = {
   assignee_2: '타 양수인',
   smart_contract: '스마트 컨트랙트',
 };
+const actorImageOverride: Partial<Record<ActorId, string>> = {
+  smart_contract: smartContractLogo,
+};
+const actorImageScaleOverride: Partial<Record<ActorId, number>> = {
+  smart_contract: 0.7,
+};
 
 const firstStage = stageDefinitions[0];
 const lastStage = stageDefinitions[stageDefinitions.length - 1];
@@ -39,6 +62,8 @@ function App() {
   const [approvalState, setApprovalState] = useState<Record<string, ParticipantId[]>>({});
   const [hoveredBlockStageId, setHoveredBlockStageId] = useState<string | null>(null);
   const [hoverPosition, setHoverPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const participantItemRefs = useRef<Partial<Record<ActorId, HTMLElement | null>>>({});
+  const participantPrevTopRef = useRef<Map<ActorId, number>>(new Map());
 
   const stageById = useMemo(() => {
     return Object.fromEntries(stageDefinitions.map((stage) => [stage.id, stage]));
@@ -232,6 +257,19 @@ function App() {
     return columns;
   }, []);
   const maxIndex = timelineColumns.length - 1;
+  const chainLineBounds = useMemo(() => {
+    const firstIndex = timelineColumns.findIndex((column) => Boolean(column.chain));
+    const lastIndex =
+      timelineColumns.length -
+      1 -
+      [...timelineColumns].reverse().findIndex((column) => Boolean(column.chain));
+    if (firstIndex < 0 || lastIndex < 0 || lastIndex < firstIndex) {
+      return null;
+    }
+    const leftPercent = ((firstIndex + 0.5) / timelineColumns.length) * 100;
+    const rightPercent = ((lastIndex + 0.5) / timelineColumns.length) * 100;
+    return { leftPercent, rightPercent };
+  }, [timelineColumns]);
   const laneFillPercent = (lane: 'real' | 'chain') => {
     const idx = timelineColumns.reduce((acc, column, i) => {
       const stage = lane === 'real' ? column.real : column.chain;
@@ -241,6 +279,12 @@ function App() {
     if (idx < 0 || maxIndex <= 0) return 0;
     return ((idx + 0.5) / timelineColumns.length) * 100;
   };
+  const chainFillRightPercent = (() => {
+    const rawFill = laneFillPercent('chain');
+    if (!chainLineBounds) return 0;
+    if (rawFill <= chainLineBounds.leftPercent) return chainLineBounds.leftPercent;
+    return Math.min(rawFill, chainLineBounds.rightPercent);
+  })();
   const timelineLabel = (stage: StageDefinition): string =>
     stage.timelineLane === 'chain'
       ? stage.timelineLabel.replaceAll(' 이벤트 블록', '')
@@ -256,9 +300,19 @@ function App() {
     }
     return true;
   };
+  const stageTypeByOrder = useMemo(() => {
+    return new Map(stageDefinitions.map((stage) => [stage.order, stage.type]));
+  }, []);
   const mergedActivityLogs = useMemo(() => {
     const completedLogs = currentStage.userLogCards
       .filter((log) => (log.stageOrder ?? Number.NEGATIVE_INFINITY) < currentStage.order)
+      .map((log) => ({
+        ...log,
+        activityType:
+          log.stageOrder !== undefined
+            ? stageTypeByOrder.get(log.stageOrder) ?? 'real_event_stage'
+            : 'real_event_stage',
+      }))
       .reverse();
     const currentLog = {
       id: `current-${currentStage.id}`,
@@ -266,9 +320,66 @@ function App() {
       description: currentStage.description,
       date: currentStage.date,
       status: 'in_progress' as const,
+      activityType: currentStage.type,
     };
     return [currentLog, ...completedLogs];
-  }, [currentStage]);
+  }, [currentStage, stageTypeByOrder]);
+  const userUiActorLabel = currentStage.order < 13 ? '양도인' : '양수인 본인';
+  const isJoinLandingStage = currentStage.id === 'stage_01_join_willchain';
+  const activityTimelineVars = {
+    '--activity-marker-size': '1rem',
+    '--activity-log-gap': '0.5rem',
+  } as CSSProperties;
+  const worldAssetOrder = [
+    'will_document',
+    'smart_contract',
+    'asset_registry',
+    'rwa_tokens',
+    'donor_account',
+    'insurance_payout',
+    'assignee_1_account',
+    'assignee_2_account',
+  ] as const;
+  const orderedWorldAssets = useMemo(() => {
+    const assetMap = new Map(currentStage.assetStates.map((asset) => [asset.assetId, asset]));
+    return worldAssetOrder
+      .map((assetId) => assetMap.get(assetId))
+      .filter((asset): asset is NonNullable<typeof asset> => Boolean(asset));
+  }, [currentStage.assetStates]);
+
+  useLayoutEffect(() => {
+    const currentPositions = new Map<ActorId, number>();
+    rows.forEach((actor) => {
+      const element = participantItemRefs.current[actor];
+      if (!element) return;
+      currentPositions.set(actor, element.getBoundingClientRect().top);
+    });
+
+    if (typeof window !== 'undefined' && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      rows.forEach((actor) => {
+        const element = participantItemRefs.current[actor];
+        if (!element) return;
+        const previousTop = participantPrevTopRef.current.get(actor);
+        const currentTop = currentPositions.get(actor);
+        if (previousTop === undefined || currentTop === undefined) return;
+        const deltaY = previousTop - currentTop;
+        if (Math.abs(deltaY) < 1) return;
+        element.animate(
+          [
+            { transform: `translateY(${deltaY}px)` },
+            { transform: 'translateY(0)' },
+          ],
+          {
+            duration: 360,
+            easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+          },
+        );
+      });
+    }
+
+    participantPrevTopRef.current = currentPositions;
+  }, [rows, currentStage.id]);
+
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_15%_15%,#dbeafe_0,#f8fafc_42%,#f1f5f9_100%)] px-4 py-6 text-slate-900 sm:px-6 lg:px-8">
       <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-4">
@@ -369,11 +480,24 @@ function App() {
                   className="relative grid flex-1 gap-1"
                   style={{ gridTemplateColumns: `repeat(${timelineColumns.length}, minmax(0, 1fr))` }}
                 >
-                  <div className="pointer-events-none absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-slate-300" />
-                  <div
-                    className="pointer-events-none absolute left-0 top-1/2 h-px -translate-y-1/2 bg-emerald-500"
-                    style={{ width: `${laneFillPercent('chain')}%` }}
-                  />
+                  {chainLineBounds ? (
+                    <div
+                      className="pointer-events-none absolute top-1/2 h-px -translate-y-1/2 bg-slate-300"
+                      style={{
+                        left: `${chainLineBounds.leftPercent}%`,
+                        right: `${100 - chainLineBounds.rightPercent}%`,
+                      }}
+                    />
+                  ) : null}
+                  {chainLineBounds && chainFillRightPercent > chainLineBounds.leftPercent ? (
+                    <div
+                      className="pointer-events-none absolute top-1/2 h-px -translate-y-1/2 bg-emerald-500"
+                      style={{
+                        left: `${chainLineBounds.leftPercent}%`,
+                        width: `${chainFillRightPercent - chainLineBounds.leftPercent}%`,
+                      }}
+                    />
+                  ) : null}
                   {timelineColumns.map((column, idx) => {
                     const stage = column.chain;
                     const isDot = Boolean(stage);
@@ -452,8 +576,8 @@ function App() {
           </div>
         </div>
 
-        <main className="grid gap-4 xl:grid-cols-[1.05fr_1.2fr_1fr]">
-          <section className="rounded-3xl border border-white/70 bg-white/85 p-4 shadow-xl backdrop-blur">
+        <main className="grid items-start gap-4 xl:grid-cols-[minmax(320px,1fr)_minmax(380px,460px)_minmax(320px,1fr)]">
+          <section className="h-full rounded-3xl border border-white/70 bg-white/85 p-4 shadow-xl backdrop-blur xl:order-1 xl:self-stretch">
             <div className="mb-3">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-700">Participants</p>
               <h2 className="text-lg font-semibold">네트워크 참여 주체</h2>
@@ -466,17 +590,23 @@ function App() {
                 const focused = Boolean(action?.isFocused);
                 const label = profile?.name ?? actorName[actor];
                 const subLabel = profile?.category ?? '시스템';
-                const imageScale = profile?.imageScale && profile.imageScale > 0 ? profile.imageScale : 1;
+                const imageSrc = profile?.imageSrc ?? actorImageOverride[actor];
+                const imageScale = profile?.imageScale && profile.imageScale > 0
+                  ? profile.imageScale
+                  : actorImageScaleOverride[actor] ?? 1;
                 const imageOffsetXPercent = profile?.imageOffsetXPercent ?? 0;
                 const imageOffsetYPercent = profile?.imageOffsetYPercent ?? 0;
 
                 return (
                   <article
                     key={actor}
+                    ref={(element) => {
+                      participantItemRefs.current[actor] = element;
+                    }}
                     className={`flex items-center gap-3 px-1 py-2 transition ${active ? '' : 'opacity-45 grayscale'}`}
                   >
                     <div className="flex min-w-[68px] flex-col items-center">
-                      {profile?.imageSrc ? (
+                      {imageSrc ? (
                         <div
                           className={`h-14 w-14 overflow-hidden rounded-full border transition ${
                             focused
@@ -487,7 +617,7 @@ function App() {
                           }`}
                         >
                           <img
-                            src={profile.imageSrc}
+                            src={imageSrc}
                             alt={`${label} 로고`}
                             className="block h-full w-full object-contain"
                             style={{
@@ -533,7 +663,7 @@ function App() {
             </div>
           </section>
 
-          <section className="rounded-3xl border border-white/70 bg-white/85 p-4 shadow-xl backdrop-blur">
+          <section className="flex h-full flex-col rounded-3xl border border-white/70 bg-white/85 p-4 shadow-xl backdrop-blur xl:order-3 xl:self-stretch">
             <div className="mb-3">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">World State</p>
@@ -541,40 +671,90 @@ function App() {
               </div>
             </div>
 
-            <div className="grid gap-2 sm:grid-cols-2">
-              {currentStage.assetStates.map((asset) => (
-                <article
-                  key={asset.assetId}
-                  className={`rounded-2xl border p-3 ${toneClasses[asset.tone]} ${
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white/85 shadow-sm">
+              <div className="grid auto-rows-[9rem] content-start sm:grid-cols-2">
+                {orderedWorldAssets.map((asset, index) => {
+                  const isLeftCol = index % 2 === 0;
+                  const isLastRow = index >= orderedWorldAssets.length - 2;
+                  const shouldPulseStateTag =
                     (currentStage.order === 12 || currentStage.order === 19 || currentStage.order === 21) &&
-                    (asset.assetId === 'rwa_tokens' || asset.assetId === 'donor_account' || asset.assetId === 'assignee_1_account')
-                      ? 'animate-value-shift'
-                      : ''
-                  }`}
-                >
-                  <div className="mb-1 flex items-center justify-between">
-                    <h3 className="text-sm font-semibold">{asset.title}</h3>
-                    <span className="rounded-full bg-white/70 px-2 py-0.5 text-[11px] font-semibold">
-                      {asset.statusText}
-                    </span>
-                  </div>
-                  {asset.valueLabel ? <p className="text-base font-semibold">{asset.valueLabel}</p> : null}
-                  {asset.helperText ? <p className="mt-1 text-xs leading-5">{asset.helperText}</p> : null}
-                  <p className="mt-2 text-[11px] text-slate-500">업데이트: {asset.lastUpdated}</p>
-                </article>
-              ))}
+                    (asset.assetId === 'rwa_tokens' || asset.assetId === 'donor_account' || asset.assetId === 'assignee_1_account');
+                  return (
+                    <article
+                      key={asset.assetId}
+                      className={`h-full p-3 transition ${
+                        isLeftCol ? 'sm:border-r sm:border-slate-200' : ''
+                      } ${!isLastRow ? 'border-b border-slate-200' : ''}`}
+                    >
+                      <div className="mb-1 flex items-center justify-between">
+                        <h3 className="text-sm font-semibold">{asset.title}</h3>
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                            statusTagClasses[asset.tone]
+                          } ${shouldPulseStateTag ? 'animate-state-tag-pulse' : ''}`}
+                          style={
+                            shouldPulseStateTag
+                              ? ({ '--state-tag-pulse-color': statusPulseColorByTone[asset.tone] } as CSSProperties)
+                              : undefined
+                          }
+                        >
+                          {asset.statusText}
+                        </span>
+                      </div>
+                      <div className="mt-2 flex h-[84px] flex-col justify-start gap-1">
+                        {asset.valueLabel ? <p className="text-base font-semibold text-slate-900">{asset.valueLabel}</p> : null}
+                        {asset.helperText ? <p className="line-clamp-3 text-xs leading-5 text-slate-600">{asset.helperText}</p> : null}
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
             </div>
 
           </section>
 
-          <section className="rounded-3xl border border-white/70 bg-white/85 p-4 shadow-xl backdrop-blur">
-            <div className="mb-3">
+          <section className="flex flex-col items-center xl:order-2">
+            <div className="mb-3 text-center">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">User Device</p>
-              <h2 className="text-lg font-semibold">사용자 안내 UI</h2>
+              <h2 className="text-lg font-semibold">
+                <span className="font-extrabold text-slate-900 underline decoration-blue-300 underline-offset-4">
+                  {userUiActorLabel}
+                </span>
+                <span className="ml-1">안내 UI</span>
+              </h2>
             </div>
 
-            <div className="w-full aspect-[9/17] rounded-[2rem] border-8 border-slate-900 bg-slate-950 p-2 shadow-2xl">
-              <div className="h-full overflow-y-auto overscroll-contain rounded-[1.4rem] bg-slate-50 p-3">
+            <div className="relative w-full max-w-[390px] aspect-[9/17] rounded-[2rem] border-8 border-slate-900 bg-slate-950 p-2 shadow-[0_40px_90px_rgba(15,23,42,0.42),0_16px_34px_rgba(15,23,42,0.32),0_3px_10px_rgba(15,23,42,0.22)]">
+              <div className="pointer-events-none absolute left-1/2 top-3 z-20 -translate-x-1/2">
+                <div className="flex h-7 w-28 items-center justify-end rounded-full border border-slate-800 bg-black/95 px-2">
+                  <span className="h-2.5 w-2.5 rounded-full border border-slate-600 bg-slate-700/90 shadow-inner" />
+                </div>
+              </div>
+              <div
+                className={`h-full overflow-y-auto overscroll-contain rounded-[1.4rem] bg-slate-50 ${
+                  isJoinLandingStage ? 'p-0' : 'px-3 pb-3 pt-10'
+                }`}
+              >
+                {isJoinLandingStage ? (
+                  <section className="flex h-full flex-col items-center justify-start gap-0 rounded-[1.4rem] bg-[radial-gradient(circle_at_24%_10%,#f5f3ff_0,#ede9fe_36%,#ddd6fe_66%,#c4b5fd_100%)] pt-36">
+                    <img
+                      src={willChainLogo}
+                      alt="WillChain 로고"
+                      className="h-[180px] w-[180px] max-w-[72%] object-contain drop-shadow-[0_18px_32px_rgba(109,40,217,0.28)]"
+                    />
+                    <div className="mt-[-22px] flex flex-col items-center gap-3">
+                      <h3 className="text-2xl font-extrabold tracking-tight text-slate-900">WillChain</h3>
+                      <button
+                        type="button"
+                        onClick={() => transitionTo(currentStage.nextStageId)}
+                        className="mt-2 rounded-xl border border-violet-500 bg-violet-600 px-6 py-2.5 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(109,40,217,0.3)] hover:bg-violet-700"
+                      >
+                        가입하기
+                      </button>
+                    </div>
+                  </section>
+                ) : (
+                  <>
                 {currentStage.userModal?.visible ? (
                   <section className="mb-3 rounded-2xl border border-blue-200 bg-blue-50 p-3">
                     <p className="text-xs font-semibold text-blue-700">현재 액션</p>
@@ -723,9 +903,10 @@ function App() {
                   {mergedActivityLogs.length === 0 ? (
                     <p className="text-xs text-slate-500">누적 로그가 아직 없습니다.</p>
                   ) : (
-                    <ol className="space-y-2">
+                    <ol className="space-y-2" style={activityTimelineVars}>
                       {mergedActivityLogs.map((log, index) => {
                         const inProgress = log.status === 'in_progress';
+                        const isBlockLog = log.activityType === 'block_commit_stage';
                         const inProgressTone =
                           currentStage.type === 'real_event_stage'
                             ? 'blue'
@@ -734,11 +915,12 @@ function App() {
                               : 'amber';
                         const markerClass = inProgress
                           ? inProgressTone === 'blue'
-                            ? 'border-blue-500 bg-blue-600 ring-2 ring-blue-200'
+                            ? 'border-blue-500 bg-blue-600 ring-4 ring-blue-200 animate-pulse-soft'
                             : inProgressTone === 'amber'
-                              ? 'border-amber-500 bg-amber-500 ring-2 ring-amber-200'
-                              : 'border-emerald-500 bg-emerald-500 ring-2 ring-emerald-200'
-                          : 'border-emerald-500 bg-emerald-500';
+                              ? 'border-amber-500 bg-amber-500 ring-4 ring-amber-200 animate-pulse-soft'
+                              : 'border-emerald-500 bg-emerald-500 ring-4 ring-emerald-200 animate-pulse-soft'
+                          : 'border-emerald-500 bg-emerald-600';
+                        const markerShapeClass = isBlockLog ? 'rounded-sm' : 'rounded-full';
                         const cardClass = inProgress
                           ? inProgressTone === 'blue'
                             ? 'border-blue-200 bg-blue-50/70'
@@ -754,13 +936,21 @@ function App() {
                               : 'bg-emerald-100 text-emerald-700'
                           : 'bg-emerald-100 text-emerald-700';
                         return (
-                          <li key={log.id} className="relative pl-6">
-                            {index < mergedActivityLogs.length - 1 ? (
-                              <span className="absolute left-[10px] top-5 h-[calc(100%-12px)] w-px bg-slate-200" />
-                            ) : null}
-                            <span
-                              className={`absolute left-0 top-1.5 h-5 w-5 rounded-full border-2 ${markerClass}`}
-                            />
+                          <li key={log.id} className="grid grid-cols-[var(--activity-marker-size)_1fr] gap-2">
+                            <div className="relative">
+                              {index < mergedActivityLogs.length - 1 ? (
+                                <span
+                                  className="absolute left-1/2 w-px -translate-x-1/2 bg-slate-200"
+                                  style={{
+                                    top: 'calc(var(--activity-marker-size) / 2)',
+                                    bottom: 'calc(var(--activity-log-gap) / -2)',
+                                  }}
+                                />
+                              ) : null}
+                              <span
+                                className={`relative block h-[var(--activity-marker-size)] w-[var(--activity-marker-size)] border-2 ${markerClass} ${markerShapeClass}`}
+                              />
+                            </div>
                             <article
                               className={`rounded-xl border p-2.5 ${cardClass}`}
                             >
@@ -781,6 +971,8 @@ function App() {
                     </ol>
                   )}
                 </section>
+                  </>
+                )}
               </div>
             </div>
           </section>
@@ -793,10 +985,10 @@ function App() {
             type="button"
             onClick={() => transitionTo(currentStage.previousStageId)}
             disabled={currentStage.id === firstStage.id}
-            className={`rounded-2xl border px-5 py-2.5 text-sm font-semibold shadow-[0_16px_40px_rgba(15,23,42,0.28),0_2px_8px_rgba(15,23,42,0.18)] backdrop-blur-md ring-1 ring-white/40 transition ${
+            className={`rounded-2xl border px-5 py-2.5 text-sm font-semibold backdrop-blur-2xl backdrop-saturate-150 ring-1 transition shadow-[0_28px_56px_rgba(15,23,42,0.34),0_10px_22px_rgba(15,23,42,0.24),inset_0_1px_0_rgba(255,255,255,0.5)] ${
               currentStage.id === firstStage.id
-                ? 'cursor-not-allowed border-slate-200 bg-white/60 text-slate-400'
-                : 'border-slate-300 bg-white/80 text-slate-800 hover:bg-white'
+                ? 'cursor-not-allowed border-white/45 bg-white/25 text-slate-400 ring-white/35'
+                : 'border-white/80 bg-white/42 text-slate-800 ring-white/75 hover:bg-white/52'
             }`}
           >
             ◀ 이전 단계
@@ -805,10 +997,10 @@ function App() {
             type="button"
             onClick={() => transitionTo(currentStage.nextStageId)}
             disabled={currentStage.id === lastStage.id}
-            className={`rounded-2xl border px-5 py-2.5 text-sm font-semibold shadow-[0_16px_40px_rgba(15,23,42,0.28),0_2px_8px_rgba(15,23,42,0.18)] backdrop-blur-md ring-1 ring-white/30 transition ${
+            className={`rounded-2xl border px-5 py-2.5 text-sm font-semibold backdrop-blur-2xl backdrop-saturate-150 ring-1 transition shadow-[0_28px_56px_rgba(15,23,42,0.34),0_10px_22px_rgba(15,23,42,0.24)] ${
               currentStage.id === lastStage.id
-                ? 'cursor-not-allowed border-slate-200 bg-white/60 text-slate-400'
-                : 'border-blue-300 bg-blue-600/90 text-white hover:bg-blue-600'
+                ? 'cursor-not-allowed border-white/45 bg-white/25 text-slate-400 ring-white/35'
+                : 'border-black bg-black text-white ring-black/10 hover:bg-black/90'
             }`}
           >
             다음 단계 ▶

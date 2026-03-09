@@ -46,18 +46,21 @@ body {
   }
 }
 
-@keyframes valueShift {
+@keyframes stateTagPulse {
   0% {
-    transform: translateY(0);
-    filter: brightness(1);
+    transform: scale(1);
+    box-shadow: 0 0 0 0 var(--state-tag-pulse-color, rgba(37, 99, 235, 0.34));
+    filter: saturate(1);
   }
-  50% {
-    transform: translateY(-2px);
-    filter: brightness(1.06);
+  45% {
+    transform: scale(1.08);
+    box-shadow: 0 0 0 10px color-mix(in srgb, var(--state-tag-pulse-color, rgba(37, 99, 235, 0.34)) 0%, transparent);
+    filter: saturate(1.12);
   }
   100% {
-    transform: translateY(0);
-    filter: brightness(1);
+    transform: scale(1);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--state-tag-pulse-color, rgba(37, 99, 235, 0.34)) 0%, transparent);
+    filter: saturate(1);
   }
 }
 
@@ -65,8 +68,8 @@ body {
   animation: pulseSoft 1.8s infinite;
 }
 
-@utility animate-value-shift {
-  animation: valueShift 1.2s ease-in-out infinite;
+@utility animate-state-tag-pulse {
+  animation: stateTagPulse 2.2s cubic-bezier(0.22, 1, 0.36, 1) infinite;
 }
 
 @utility grid-cols-22 {

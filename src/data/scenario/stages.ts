@@ -642,7 +642,7 @@ const stageList: StageDefinition[] = [
     ],
     assetStates: mergeAssets(
       {
-        smart_contract: { statusText: '상속 절차 조건 활성화', tone: 'green', helperText: '사후 절차 개시 완료로 자동 실행 조건이 활성화되었습니다.' },
+        smart_contract: { statusText: '활성화', tone: 'green', helperText: '사후 절차 개시 완료로 자동 실행 조건이 활성화되었습니다.' },
         donor_account: { statusText: '계좌 동결', tone: 'red', valueLabel: '₩820,000,000' },
         insurance_payout: { statusText: '지급 심사 가능', tone: 'yellow', valueLabel: '₩300,000,000' },
         post_process_status: { statusText: '사후 절차 진행 중', tone: 'blue' },
